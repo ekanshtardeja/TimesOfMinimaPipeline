@@ -1,32 +1,3 @@
-#!/usr/bin/env python3
-"""
-tess_eb_minima.py
------------------
-Primary-minimum timings (ToM) of an eclipsing binary from every TESS light curve
-available on MAST.
-
-Pipeline
-  1. Ask for / accept a star name and search MAST (lightkurve) for all TESS light curves.
-  2. Group the files by cadence and give each a rating out of 10
-     (120 s = good -> 10, 600 s = poor -> 4; table below, edit freely).
-  3. Find the orbital period with BLS on the best-rated file, then resolve the
-     classic EB ambiguity (BLS returns P/2 when primary and secondary are similar)
-     using a secondary-eclipse test and an odd/even depth test.
-  4. In every file, locate the primary eclipses and fit
-        f(t) = c0 + c1*(t - tc) - A * exp(-(t - mu)^2 / (2 s^2))
-     to each one. mu = time of minimum. Each ToM inherits its file's cadence rating.
-  5. Write a CSV of all minima, one diagnostic PNG per file, and an O-C plot.
-
-Usage
-  python tess_eb_minima.py                       # prompts for star name
-  python tess_eb_minima.py "CW Eri"
-  python tess_eb_minima.py "TIC 98853987" --period 2.7284 --t0 2458413.4527
-  python tess_eb_minima.py "CW Eri" --authors SPOC QLP --min-per-file 5
-
-Requirements: pip install lightkurve astropy scipy numpy pandas matplotlib
-Times are BJD_TDB (TESS BTJD + 2457000).
-"""
-
 import argparse
 import os
 import re
@@ -47,13 +18,13 @@ warnings.filterwarnings("ignore")
 
 BTJD0 = 2457000.0
 
-# (upper limit on exposure time in seconds, rating /10)
+
 CADENCE_RATINGS = [
-    (30, 10),       # 20 s  fast cadence
-    (150, 10),      # 120 s 2-min cadence           -> good
-    (250, 7),       # 200 s FFI (Cycle 5+)
-    (700, 4),       # 600 s 10-min FFI (Cycles 3-4) -> poor
-    (np.inf, 2),    # 1800 s 30-min FFI (Cycles 1-2)
+    (30, 10),       
+    (150, 10),     
+    (250, 7),      
+    (700, 4),       
+    (np.inf, 2),   
 ]
 
 
@@ -68,9 +39,6 @@ def cadence_label(exptime_s):
     return f"{int(round(exptime_s))}s"
 
 
-# ----------------------------------------------------------------------------
-# Data access
-# ----------------------------------------------------------------------------
 def fetch_lightcurves(target, authors=None, flux_column=None, quality_bitmask="default"):
     import lightkurve as lk
 
@@ -111,7 +79,7 @@ def fetch_lightcurves(target, authors=None, flux_column=None, quality_bitmask="d
 def clean_arrays(lc):
     """Return t (BTJD, days), normalised flux, flux error, median cadence (days)."""
     lc = lc.remove_nans().normalize()
-    lc = lc.remove_outliers(sigma_lower=np.inf, sigma_upper=4)   # keep eclipses
+    lc = lc.remove_outliers(sigma_lower=np.inf, sigma_upper=4)
     t = np.asarray(lc.time.tdb.jd, float) - BTJD0
     f = np.asarray(np.ma.filled(lc.flux.value, np.nan), float)
     try:
@@ -132,9 +100,7 @@ def clean_arrays(lc):
     return t, f, e, cad
 
 
-# ----------------------------------------------------------------------------
-# Period / ephemeris
-# ----------------------------------------------------------------------------
+
 def bin_series(t, f, dt):
     k = np.floor((t - t.min()) / dt).astype(int)
     df = pd.DataFrame({"k": k, "t": t, "f": f}).groupby("k").mean()
@@ -142,7 +108,7 @@ def bin_series(t, f, dt):
 
 
 def run_bls(t, f, pmin, pmax):
-    if np.median(np.diff(t)) < 0.006:          # finer than ~8.6 min -> bin to 10 min
+    if np.median(np.diff(t)) < 0.006:          
         t, f = bin_series(t, f, 10 / 1440)
     baseline = t.max() - t.min()
     pmax = min(pmax, baseline / 2)
@@ -165,7 +131,7 @@ def run_bls(t, f, pmin, pmax):
                     dur=res.duration[j], depth=res.depth[j])
         if best is None or cand["power"] > best["power"]:
             best = cand
-    # local refinement around the peak
+   
     P0 = best["P"]
     periods = np.linspace(P0 * 0.998, P0 * 1.002, 4001)
     res = bls.power(periods, best["dur"])
@@ -175,7 +141,7 @@ def run_bls(t, f, pmin, pmax):
 
 
 def phase(t, P, t0):
-    return ((t - t0) / P + 0.5) % 1.0 - 0.5          # primary at 0, secondary at +-0.5
+    return ((t - t0) / P + 0.5) % 1.0 - 0.5          
 
 
 def depth_at(t, f, P, t0, centre, hw):
@@ -243,9 +209,7 @@ def eclipse_fwhm(t, f, P, t0, cad, dur_guess):
     return fwhm
 
 
-# ----------------------------------------------------------------------------
-# Minima extraction
-# ----------------------------------------------------------------------------
+
 def gauss_model(t, c0, c1, A, mu, s, tc):
     return c0 + c1 * (t - tc) - A * np.exp(-0.5 * ((t - mu) / s) ** 2)
 
@@ -338,9 +302,7 @@ def process_file(entry, P, t0, fwhm, min_per_file):
     print(msg)
 
 
-# ----------------------------------------------------------------------------
-# Output
-# ----------------------------------------------------------------------------
+
 def fit_ephemeris(T, err, P):
     T0 = T[np.argmin(err)]
     for _ in range(3):
@@ -404,9 +366,7 @@ def plot_oc(df, outdir, star, P, T0):
     plt.close(fig)
 
 
-# ----------------------------------------------------------------------------
-# Driver
-# ----------------------------------------------------------------------------
+
 def analyse(star, entries, period=None, t0=None, pmin=0.25, pmax=30.0, min_per_file=4,
             outdir=None):
     outdir = outdir or re.sub(r"[^\w\-]+", "_", star.strip()) + "_TESS_minima"
@@ -417,7 +377,7 @@ def analyse(star, entries, period=None, t0=None, pmin=0.25, pmax=30.0, min_per_f
     entries = [en for en in entries if len(en["t"]) > 100]
     entries.sort(key=lambda en: (en["sector"], en["exptime"], en["author"]))
 
-    # summary by cadence
+    
     print("\nFiles by cadence:")
     groups = {}
     for en in entries:
@@ -427,7 +387,7 @@ def analyse(star, entries, period=None, t0=None, pmin=0.25, pmax=30.0, min_per_f
         print(f"  {cadence_label(ex):>6}  rating {cadence_rating(ex):>2}/10  "
               f"{len(groups[ex])} file(s)  sectors: {secs}")
 
-    # period on the best file (highest rating, then most points)
+   
     best = max(entries, key=lambda en: (en["rating"], len(en["t"])))
     tb, fb, cb = best["t"], best["f"], best["cad"]
     if period:
@@ -439,7 +399,7 @@ def analyse(star, entries, period=None, t0=None, pmin=0.25, pmax=30.0, min_per_f
             note = "user period; epoch from BLS"
         else:
             dur, note = min(0.1 * P, 0.3), "user ephemeris"
-        # make sure the epoch is on the deeper eclipse
+        
         hw = max(0.25 * dur / P, 0.002)
         if depth_at(tb, fb, P, T0, 0.5, hw)[0] > depth_at(tb, fb, P, T0, 0.0, hw)[0]:
             T0 += P / 2
